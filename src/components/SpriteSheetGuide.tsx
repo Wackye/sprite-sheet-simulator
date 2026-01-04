@@ -1,4 +1,3 @@
-import React from 'react';
 import { Clock, Zap, Layers, Image as ImageIcon, CheckCircle, AlertCircle } from 'lucide-react';
 
 const SpriteSheetGuide = () => {
