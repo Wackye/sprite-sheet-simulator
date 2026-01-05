@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-
+import kvImage from '../assets/KV.png';
 
 export default function Footer() {
     const { t } = useTranslation();
@@ -16,6 +16,9 @@ export default function Footer() {
                     Golden
                 </a>
             </p>
+            <div className="w-1/2 mx-auto my-6 flex justify-center">
+                <img src={kvImage} alt="KV" className="w-1/2 h-auto object-cover" />
+            </div>
         </footer >
     )
 }
