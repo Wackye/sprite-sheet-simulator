@@ -15,7 +15,10 @@
         "flip_horizontal": "水平翻轉預覽",
         "play": "開始播放",
         "pause": "暫停播放",
-        "upload_button": "上傳"
+        "upload_button": "上傳",
+        "save_gif": "儲存為 GIF",
+        "exporting": "匯出中...",
+        "zoom": "縮放"
     },
     "guide": {
         "premium_guide": "Premium Guide",

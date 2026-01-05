@@ -15,7 +15,10 @@
         "flip_horizontal": "Flip Horizontal",
         "play": "Play",
         "pause": "Pause",
-        "upload_button": "Upload"
+        "upload_button": "Upload",
+        "save_gif": "Save as GIF",
+        "exporting": "Exporting...",
+        "zoom": "Zoom"
     },
     "guide": {
         "premium_guide": "Premium Guide",

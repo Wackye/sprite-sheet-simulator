@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, Play, Pause, Plus, Globe } from 'lucide-react';
+import { Upload, Play, Pause, Plus, Globe, Download, ChevronDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+
+import GIF from 'gif.js';
 
 interface UploadedImage {
     id: string;
@@ -18,7 +20,12 @@ export default function SpritePreviewer() {
     const [currentFrame, setCurrentFrame] = useState(0);
     const [columns, setColumns] = useState(4);
     const [rows, setRows] = useState(4);
+
     const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
+    const [zoomLevel, setZoomLevel] = useState(100);
+    const [isZoomMenuOpen, setIsZoomMenuOpen] = useState(false);
+    const [zoomInput, setZoomInput] = useState('100');
+    const [isExporting, setIsExporting] = useState(false);
 
     // History state
     const [history, setHistory] = useState<UploadedImage[]>([]);
@@ -165,6 +172,87 @@ export default function SpritePreviewer() {
         i18n.changeLanguage(newLang);
     };
 
+    const handleExportGif = () => {
+        if (!image || !imageRef.current) return;
+
+        setIsExporting(true);
+        const img = imageRef.current;
+        const frameWidth = img.naturalWidth / columns;
+        const frameHeight = img.naturalHeight / rows;
+
+        const gif = new GIF({
+            workers: 2,
+            quality: 10,
+            width: frameWidth,
+            height: frameHeight,
+            workerScript: '/gif.worker.js',
+            background: '#00000000', // Transparent
+            transparent: 0x00000000
+        });
+
+        // Create a temporary canvas to draw each frame
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = frameWidth;
+        tempCanvas.height = frameHeight;
+        const ctx = tempCanvas.getContext('2d');
+
+        if (!ctx) {
+            setIsExporting(false);
+            return;
+        }
+
+        // Add frames
+        for (let i = 0; i < totalFrames; i++) {
+            const col = i % columns;
+            const row = Math.floor(i / columns);
+
+            ctx.clearRect(0, 0, frameWidth, frameHeight);
+
+            if (flipHorizontal) {
+                ctx.save();
+                ctx.scale(-1, 1);
+                ctx.drawImage(
+                    img,
+                    col * frameWidth,
+                    row * frameHeight,
+                    frameWidth,
+                    frameHeight,
+                    -frameWidth,
+                    0,
+                    frameWidth,
+                    frameHeight
+                );
+                ctx.restore();
+            } else {
+                ctx.drawImage(
+                    img,
+                    col * frameWidth,
+                    row * frameHeight,
+                    frameWidth,
+                    frameHeight,
+                    0,
+                    0,
+                    frameWidth,
+                    frameHeight
+                );
+            }
+
+            gif.addFrame(ctx, { copy: true, delay: frameDelay });
+        }
+
+        gif.on('finished', (blob) => {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${activeImage?.name.split('.')[0] || 'sprite'}.gif`;
+            a.click();
+            URL.revokeObjectURL(url);
+            setIsExporting(false);
+        });
+
+        gif.render();
+    };
+
     return (
         <div className="min-h-screen bg-[#F8F9F9] flex flex-col font-sans text-[#1F2937]">
             <section className="min-h-screen flex flex-col p-6 lg:p-12 max-w-[1600px] mx-auto w-full">
@@ -223,14 +311,72 @@ export default function SpritePreviewer() {
                                 <div className="p-6 flex flex-col gap-4">
                                     <div className="flex justify-between items-center px-1">
                                         <h2 className="text-xl font-bold text-[#243179]">{t('app.preview')}</h2>
-                                        <div className="px-3 py-1 bg-gray-100 rounded-full text-xs font-mono text-gray-600">
-                                            {t('app.frame_label')} {currentFrame + 1} / {totalFrames}
+                                        <div className="flex items-center gap-3">
+                                            <div className="relative group">
+                                                <div className="relative flex items-center">
+                                                    <input
+                                                        type="text"
+                                                        value={zoomInput}
+                                                        onChange={(e) => {
+                                                            setZoomInput(e.target.value);
+                                                        }}
+                                                        onBlur={() => {
+                                                            let val = parseInt(zoomInput);
+                                                            if (isNaN(val)) val = 100;
+                                                            val = Math.max(10, Math.min(500, val));
+                                                            setZoomLevel(val);
+                                                            setZoomInput(val.toString());
+                                                        }}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                                e.currentTarget.blur();
+                                                            }
+                                                        }}
+                                                        onClick={() => setIsZoomMenuOpen(!isZoomMenuOpen)}
+                                                        className="w-20 pl-3 pr-8 py-1.5 bg-white border border-gray-200 rounded-lg text-sm font-bold text-gray-700 text-center focus:outline-none focus:ring-2 focus:ring-[#1957BC]/20 focus:border-[#1957BC]"
+                                                    />
+                                                    <span className="absolute right-6 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">%</span>
+                                                    <ChevronDown
+                                                        size={14}
+                                                        className={`absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none transition-transform ${isZoomMenuOpen ? 'rotate-180' : ''}`}
+                                                    />
+                                                </div>
+
+                                                {isZoomMenuOpen && (
+                                                    <>
+                                                        <div
+                                                            className="fixed inset-0 z-10"
+                                                            onClick={() => setIsZoomMenuOpen(false)}
+                                                        ></div>
+                                                        <div className="absolute right-0 top-full mt-2 w-24 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-20 flex flex-col overflow-hidden animate-fade-in-up">
+                                                            {[50, 75, 100, 125, 150, 200].map((zoom) => (
+                                                                <button
+                                                                    key={zoom}
+                                                                    onClick={() => {
+                                                                        setZoomLevel(zoom);
+                                                                        setZoomInput(zoom.toString());
+                                                                        setIsZoomMenuOpen(false);
+                                                                    }}
+                                                                    className={`w-full px-4 py-2 text-sm font-medium text-left hover:bg-gray-50 transition-colors ${zoomLevel === zoom ? 'text-[#1957BC] bg-blue-50/50' : 'text-gray-700'
+                                                                        }`}
+                                                                >
+                                                                    {zoom}%
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
+                                            <div className="px-3 py-1 bg-gray-100 rounded-full text-xs font-mono text-gray-600">
+                                                {t('app.frame_label')} {currentFrame + 1} / {totalFrames}
+                                            </div>
                                         </div>
                                     </div>
 
                                     {/* Canvas Area */}
+                                    {/* Canvas Area */}
                                     <div
-                                        className="relative bg-[#F1F5F9] rounded-xl overflow-hidden cursor-pointer group select-none flex items-center justify-center border border-gray-100/50 min-h-[300px] lg:min-h-[400px]"
+                                        className="relative bg-[#F1F5F9] rounded-xl overflow-auto custom-scrollbar cursor-pointer group select-none flex items-center justify-center border border-gray-100/50 min-h-[300px] lg:min-h-[400px]"
                                         onClick={togglePlayPause}
                                     >
                                         {/* Pattern Background */}
@@ -238,8 +384,12 @@ export default function SpritePreviewer() {
 
                                         <canvas
                                             ref={canvasRef}
-                                            className="relative max-w-full max-h-full object-contain drop-shadow-xl"
-                                            style={{ imageRendering: 'pixelated' }}
+                                            className="relative object-contain drop-shadow-xl transition-[width,height] duration-200 ease-out"
+                                            style={{
+                                                imageRendering: 'pixelated',
+                                                width: imageDimensions ? `${(imageDimensions.width / columns) * (zoomLevel / 100)}px` : undefined,
+                                                height: imageDimensions ? `${(imageDimensions.height / rows) * (zoomLevel / 100)}px` : undefined
+                                            }}
                                         />
 
                                         {/* Play Overlay */}
@@ -330,11 +480,11 @@ export default function SpritePreviewer() {
                     {/* Right Column: Controls (30%) */}
                     <div className={`col-span-1 lg:col-span-3 flex flex-col h-full ${!image ? 'opacity-50 pointer-events-none grayscale-[0.8] blur-[1px] transition-all duration-500' : 'transition-all duration-500'}`}>
                         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden sticky top-6">
-                            <div className="p-6 border-b border-gray-100 flex-none bg-gray-50/30">
+                            <div className="p-4 border-b border-gray-100 flex-none bg-gray-50/30">
                                 <h2 className="text-lg font-bold text-[#243179]">{t('app.settings')}</h2>
                             </div>
 
-                            <div className="p-6 space-y-8">
+                            <div className="p-4 space-y-6">
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
                                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
@@ -367,15 +517,15 @@ export default function SpritePreviewer() {
                                 </div>
 
                                 <div className="space-y-4">
-                                    <div className="flex justify-between items-end">
+                                    <div className="flex flex-col gap-3">
                                         <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{t('app.animation_duration')}</span>
-                                        <div className="text-right">
-                                            <div className="text-3xl font-bold text-[#243179] font-mono leading-none tracking-tight">
-                                                {duration}
-                                                <span className="text-sm text-gray-600 ml-1 font-sans font-normal">{t('app.seconds')}</span>
-                                            </div>
-                                            <div className="text-xs text-[#1957BC] font-medium mt-1 bg-blue-50 px-2 py-0.5 rounded-md inline-block">
+                                        <div className="flex justify-between items-center">
+                                            <div className="text-xs text-[#1957BC] font-medium bg-blue-50 px-2 py-1 rounded-md">
                                                 1 Frame ≈ {Math.round((duration * 1000) / totalFrames)} ms
+                                            </div>
+                                            <div className="text-2xl font-bold text-[#243179] font-mono leading-none tracking-tight">
+                                                {duration.toFixed(2)}
+                                                <span className="text-sm text-gray-600 ml-1 font-sans font-normal">{t('app.seconds')}</span>
                                             </div>
                                         </div>
                                     </div>
@@ -420,13 +570,22 @@ export default function SpritePreviewer() {
                                 <button
                                     onClick={togglePlayPause}
                                     disabled={!image}
-                                    className={`w-full flex items-center justify-center gap-3 px-6 py-4 rounded-xl text-white font-bold text-lg shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5 active:scale-[0.98] ${isPlaying
-                                        ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-200/50'
-                                        : 'bg-[#243179] hover:bg-[#1e2a69] shadow-blue-900/20'
+                                    className={`w-full flex items-center justify-center gap-3 px-6 py-3 rounded-xl text-white font-bold text-lg hover:shadow-lg transition-all transform hover:-translate-y-0.5 active:scale-[0.98] ${isPlaying
+                                        ? 'bg-amber-500 hover:bg-amber-600'
+                                        : 'bg-[#243179] hover:bg-[#1e2a69]'
                                         } disabled:bg-gray-300 disabled:shadow-none disabled:transform-none disabled:translate-y-0 disabled:cursor-not-allowed`}
                                 >
                                     {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />}
                                     {isPlaying ? t('app.pause') : t('app.play')}
+                                </button>
+
+                                <button
+                                    onClick={handleExportGif}
+                                    disabled={!image || isExporting}
+                                    className="w-full flex items-center justify-center gap-2 px-6 py-3 mt-3 bg-white border border-gray-200 rounded-xl text-gray-700 font-bold text-lg hover:bg-gray-50 hover:border-gray-300 hover:text-[#243179] transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
+                                >
+                                    <Download size={20} />
+                                    {isExporting ? t('app.exporting') : t('app.save_gif')}
                                 </button>
                             </div>
                         </div>
