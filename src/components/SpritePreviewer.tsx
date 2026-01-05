@@ -186,8 +186,8 @@ export default function SpritePreviewer() {
             width: frameWidth,
             height: frameHeight,
             workerScript: '/gif.worker.js',
-            background: '#00000000', // Transparent
-            transparent: 0x00000000
+            background: '#000000', // Background color to be made transparent
+            transparent: 0x000000 as any // Make black transparent
         });
 
         // Create a temporary canvas to draw each frame
@@ -253,6 +253,49 @@ export default function SpritePreviewer() {
         gif.render();
     };
 
+
+    const handleLoadExample = async () => {
+        try {
+            const response = await fetch(`${import.meta.env.BASE_URL}example.png`);
+            const blob = await response.blob();
+            const reader = new FileReader();
+
+            reader.onload = (event) => {
+                const result = event.target?.result as string;
+                const img = new Image();
+                img.onload = () => {
+                    const newDimensions = { width: img.naturalWidth, height: img.naturalHeight };
+                    const newId = Date.now().toString();
+
+                    const newImageEntry: UploadedImage = {
+                        id: newId,
+                        url: result,
+                        name: 'example.png',
+                        dimensions: newDimensions
+                    };
+
+                    setHistory(prev => [newImageEntry, ...prev]);
+                    setActiveImageId(newId);
+
+                    // Update current view with presets for example
+                    setImage(result);
+                    setImageDimensions(newDimensions);
+                    setCurrentFrame(0);
+                    setIsPlaying(true); // Auto play
+
+                    // Specific settings for example.png
+                    setColumns(2);
+                    setRows(2);
+                    setDuration(1.0);
+                };
+                img.src = result;
+            };
+            reader.readAsDataURL(blob);
+        } catch (error) {
+            console.error('Failed to load example image', error);
+        }
+    };
+
     return (
         <div className="min-h-screen bg-[#F8F9F9] flex flex-col font-sans text-[#1F2937]">
             <section className="min-h-screen flex flex-col p-6 lg:p-12 max-w-[1600px] mx-auto w-full">
@@ -294,7 +337,28 @@ export default function SpritePreviewer() {
                                             <span className="block text-base font-semibold text-gray-700 group-hover:text-[#1957BC] transition-colors">
                                                 {t('app.upload_prompt')}
                                             </span>
-                                            <span className="text-sm text-gray-600 mt-1">{t('app.upload_subtext')}</span>
+                                            <small className="text-xs text-gray-600">{t('app.upload_subtext')}</small>
+                                            <div className="mt-8 flex flex-col items-center gap-3 w-full max-w-xs z-10">
+                                                <div className="flex items-center gap-4 w-full">
+                                                    <div className="h-px bg-gray-200 flex-1"></div>
+                                                    <span className="text-gray-400 text-sm font-medium">{t('app.or', 'or')}</span>
+                                                    <div className="h-px bg-gray-200 flex-1"></div>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        handleLoadExample();
+                                                    }}
+                                                    className="w-full py-2.5 px-4 bg-white border border-gray-300 rounded-xl text-gray-700 font-bold hover:bg-gray-50 hover:text-[#1957BC] hover:border-[#1957BC] transition-all hover:shadow-sm active:scale-95 flex items-center justify-center gap-2 group/btn"
+                                                >
+                                                    <div className="p-1 bg-gray-100 rounded-md group-hover/btn:bg-blue-50 transition-colors">
+                                                        <Upload size={14} className="text-gray-500 group-hover/btn:text-[#1957BC]" />
+                                                    </div>
+                                                    {t('app.load_example', 'Load Example')}
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                     <input
