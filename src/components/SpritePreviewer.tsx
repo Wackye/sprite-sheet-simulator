@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, Play, Pause, Plus, Globe, Download, ChevronDown } from 'lucide-react';
+import { Upload, Play, Pause, Plus, Globe, Download, ChevronDown, Check } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import GIF from 'gif.js';
@@ -20,12 +20,14 @@ export default function SpritePreviewer() {
     const [currentFrame, setCurrentFrame] = useState(0);
     const [columns, setColumns] = useState(4);
     const [rows, setRows] = useState(4);
+    const [playbackMode, setPlaybackMode] = useState<'forward' | 'reverse' | 'pingpong'>('forward');
 
     const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
     const [zoomLevel, setZoomLevel] = useState(100);
     const [isZoomMenuOpen, setIsZoomMenuOpen] = useState(false);
     const [zoomInput, setZoomInput] = useState('100');
     const [isExporting, setIsExporting] = useState(false);
+    const [isExportSuccess, setIsExportSuccess] = useState(false);
 
     // History state
     const [history, setHistory] = useState<UploadedImage[]>([]);
@@ -43,12 +45,44 @@ export default function SpritePreviewer() {
 
     useEffect(() => {
         if (isPlaying && image) {
-            const startTime = Date.now() - currentFrame * frameDelay;
+            const startTime = Date.now();
+            const startFrame = currentFrame;
 
             const animate = () => {
-                const elapsed = Date.now() - startTime;
-                const frame = Math.floor(elapsed / frameDelay) % totalFrames;
-                setCurrentFrame(frame);
+                const now = Date.now();
+                const elapsed = now - startTime;
+                const framesPassed = Math.floor(elapsed / frameDelay);
+
+                let nextFrame = 0;
+
+                if (playbackMode === 'forward') {
+                    nextFrame = (startFrame + framesPassed) % totalFrames;
+                } else if (playbackMode === 'reverse') {
+                    // Reversing logic: start from current, go backwards.
+                    // We can model this as: totalFrames - (framesPassed % totalFrames)
+                    // But we need to account for startFrame.
+                    // Easiest is to subtract framesPassed from startFrame and wrap around.
+                    const wrapped = (startFrame - framesPassed) % totalFrames;
+                    nextFrame = wrapped >= 0 ? wrapped : totalFrames + wrapped;
+                } else if (playbackMode === 'pingpong') {
+                    // PingPong: 0 -> totalFrames-1 -> 0
+                    // Cycle length is (totalFrames - 1) * 2
+                    // Only if totalFrames > 1
+                    if (totalFrames > 1) {
+                        const cycleLength = (totalFrames - 1) * 2;
+                        const cyclePos = (startFrame + framesPassed) % cycleLength;
+                        if (cyclePos < totalFrames) {
+                            nextFrame = cyclePos;
+                        } else {
+                            nextFrame = cycleLength - cyclePos;
+                        }
+                    } else {
+                        nextFrame = 0;
+                    }
+
+                }
+
+                setCurrentFrame(nextFrame);
                 animationRef.current = requestAnimationFrame(animate);
             };
 
@@ -60,7 +94,7 @@ export default function SpritePreviewer() {
                 }
             };
         }
-    }, [isPlaying, image, frameDelay, totalFrames]);
+    }, [isPlaying, image, frameDelay, totalFrames, playbackMode]); // Removed currentFrame from deps to avoid re-triggering loop on every frame set
 
     useEffect(() => {
         if (image && canvasRef.current && imageRef.current) {
@@ -173,7 +207,21 @@ export default function SpritePreviewer() {
     };
 
     const handleExportGif = () => {
-        if (!image || !imageRef.current) return;
+        if (!image || !imageRef.current) {
+            console.error('Export failed: Image or imageRef missing');
+            return;
+        }
+
+        console.log('Starting GIF Export', {
+            columns,
+            rows,
+            totalFrames,
+            duration,
+            playbackMode,
+            frameDelay,
+            flipHorizontal,
+            imageDimensions
+        });
 
         setIsExporting(true);
         const img = imageRef.current;
@@ -197,50 +245,75 @@ export default function SpritePreviewer() {
         const ctx = tempCanvas.getContext('2d');
 
         if (!ctx) {
+            console.error('Export failed: Could not get 2D context for temp canvas');
             setIsExporting(false);
             return;
         }
 
-        // Add frames
-        for (let i = 0; i < totalFrames; i++) {
-            const col = i % columns;
-            const row = Math.floor(i / columns);
+        // Generate frame indices based on Playback Mode
+        let frameIndices: number[] = [];
+        const allFrames = Array.from({ length: totalFrames }, (_, i) => i);
 
-            ctx.clearRect(0, 0, frameWidth, frameHeight);
-
-            if (flipHorizontal) {
-                ctx.save();
-                ctx.scale(-1, 1);
-                ctx.drawImage(
-                    img,
-                    col * frameWidth,
-                    row * frameHeight,
-                    frameWidth,
-                    frameHeight,
-                    -frameWidth,
-                    0,
-                    frameWidth,
-                    frameHeight
-                );
-                ctx.restore();
+        if (playbackMode === 'forward') {
+            frameIndices = allFrames;
+        } else if (playbackMode === 'reverse') {
+            frameIndices = [...allFrames].reverse();
+        } else if (playbackMode === 'pingpong') {
+            if (totalFrames > 1) {
+                // 0, 1, 2 -> 0, 1, 2, 1
+                frameIndices = [...allFrames, ...allFrames.slice(1, -1).reverse()];
             } else {
-                ctx.drawImage(
-                    img,
-                    col * frameWidth,
-                    row * frameHeight,
-                    frameWidth,
-                    frameHeight,
-                    0,
-                    0,
-                    frameWidth,
-                    frameHeight
-                );
+                frameIndices = allFrames;
             }
-
-            gif.addFrame(ctx, { copy: true, delay: frameDelay });
         }
 
+        console.log(`Generated ${frameIndices.length} frames for export (Mode: ${playbackMode})`, frameIndices);
+
+        // Add frames to GIF
+        frameIndices.forEach((frameIndex, idx) => {
+            const col = frameIndex % columns;
+            const row = Math.floor(frameIndex / columns);
+
+            try {
+                ctx.clearRect(0, 0, frameWidth, frameHeight);
+
+                if (flipHorizontal) {
+                    ctx.save();
+                    ctx.scale(-1, 1);
+                    ctx.drawImage(
+                        img,
+                        col * frameWidth,
+                        row * frameHeight,
+                        frameWidth,
+                        frameHeight,
+                        -frameWidth,
+                        0,
+                        frameWidth,
+                        frameHeight
+                    );
+                    ctx.restore();
+                } else {
+                    ctx.drawImage(
+                        img,
+                        col * frameWidth,
+                        row * frameHeight,
+                        frameWidth,
+                        frameHeight,
+                        0,
+                        0,
+                        frameWidth,
+                        frameHeight
+                    );
+                }
+
+                gif.addFrame(ctx, { copy: true, delay: frameDelay });
+            } catch (err) {
+                console.error(`Error adding frame ${idx} (source index: ${frameIndex}):`, err);
+            }
+        });
+
         gif.on('finished', (blob) => {
+            console.log('GIF Finished. Blob size:', blob.size);
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -248,9 +321,12 @@ export default function SpritePreviewer() {
             a.click();
             URL.revokeObjectURL(url);
             setIsExporting(false);
+            setIsExportSuccess(true);
+            setTimeout(() => setIsExportSuccess(false), 3000);
         });
 
         gif.render();
+        console.log('GIF render started');
     };
 
 
@@ -287,6 +363,7 @@ export default function SpritePreviewer() {
                     setColumns(2);
                     setRows(2);
                     setDuration(1.0);
+                    setPlaybackMode('forward');
                 };
                 img.src = result;
             };
@@ -610,6 +687,30 @@ export default function SpritePreviewer() {
                                         </div>
                                     </div>
                                 </div>
+                                <div className="space-y-2">
+                                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{t('app.playback_mode')}</span>
+                                    <div className="grid grid-cols-3 gap-2 bg-gray-100 p-1 rounded-xl">
+                                        {(['forward', 'reverse', 'pingpong'] as const).map((mode) => (
+                                            <button
+                                                key={mode}
+                                                onClick={() => setPlaybackMode(mode)}
+                                                disabled={!image}
+                                                title={t(`app.mode_${mode}`)}
+                                                className={`px-3 py-2 rounded-lg text-sm font-bold transition-all text-center flex items-center justify-center ${playbackMode === mode
+                                                    ? 'bg-white text-[#1957BC] shadow-sm'
+                                                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
+                                                    }`}
+                                            >
+                                                {mode === 'forward' && '→'}
+                                                {mode === 'reverse' && '←'}
+                                                {mode === 'pingpong' && '↔'}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div className="text-center text-xs font-medium text-gray-500 mt-1">
+                                        {t(`app.mode_${playbackMode}`)}
+                                    </div>
+                                </div>
 
                                 <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 hover:border-blue-200 transition-colors">
                                     <label className="flex items-center justify-between cursor-pointer group">
@@ -656,6 +757,20 @@ export default function SpritePreviewer() {
                     </div>
                 </div>
             </section>
+            {/* Success Popup */}
+            {isExportSuccess && (
+                <div className="fixed top-6 right-6 z-50 animate-fade-in-up">
+                    <div className="bg-white rounded-xl shadow-xl border border-green-100 p-4 flex items-center gap-3 pr-8">
+                        <div className="w-10 h-10 bg-green-50 rounded-full flex items-center justify-center text-green-600">
+                            <Check size={20} className="stroke-[3px]" />
+                        </div>
+                        <div>
+                            <h4 className="font-bold text-gray-800">{t('app.export_success')}</h4>
+                            <p className="text-sm text-gray-500">{t('app.download_started')}</p>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

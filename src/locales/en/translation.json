@@ -18,7 +18,15 @@
         "upload_button": "Upload",
         "save_gif": "Save as GIF",
         "exporting": "Exporting...",
-        "zoom": "Zoom"
+        "zoom": "Zoom",
+        "playback_mode": "Playback Mode",
+        "mode_forward": "Forward",
+        "mode_reverse": "Reverse",
+        "mode_pingpong": "Loop (Ping Pong)",
+        "export_success": "Export Successful",
+        "download_started": "Download has started.",
+        "or": "or",
+        "load_example": "Load Example"
     },
     "guide": {
         "premium_guide": "Premium Guide",

@@ -18,7 +18,15 @@
         "upload_button": "上傳",
         "save_gif": "儲存為 GIF",
         "exporting": "匯出中...",
-        "zoom": "縮放"
+        "zoom": "縮放",
+        "playback_mode": "播放模式",
+        "mode_forward": "Forward",
+        "mode_reverse": "Reverse",
+        "mode_pingpong": "來回 (Ping Pong)",
+        "export_success": "匯出成功",
+        "download_started": "檔案已開始下載",
+        "or": "或",
+        "load_example": "載入範例"
     },
     "guide": {
         "premium_guide": "Premium Guide",
