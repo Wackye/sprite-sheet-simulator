@@ -233,7 +233,7 @@ export default function SpritePreviewer() {
             quality: 10,
             width: frameWidth,
             height: frameHeight,
-            workerScript: '/gif.worker.js',
+            workerScript: `${import.meta.env.BASE_URL}gif.worker.js`,
             background: '#000000', // Background color to be made transparent
             transparent: 0x000000 as any // Make black transparent
         });
@@ -242,7 +242,7 @@ export default function SpritePreviewer() {
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = frameWidth;
         tempCanvas.height = frameHeight;
-        const ctx = tempCanvas.getContext('2d');
+        const ctx = tempCanvas.getContext('2d', { willReadFrequently: true });
 
         if (!ctx) {
             console.error('Export failed: Could not get 2D context for temp canvas');
